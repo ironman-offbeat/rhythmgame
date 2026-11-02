@@ -101,3 +101,59 @@ test('notes are scheduled against absolute beats and never score when unplayed',
   game.tick(nextSpawn + config.durationMs + 1);
   assert.equal(game.snapshot(nextSpawn + config.durationMs + 1).bad, 2);
 });
+
+test('custom schedule spawns circles only at user-selected beats', () => {
+  const game = new RhythmEngine();
+  const configCustom = { ...config, bpm: 120, beatsPerNote: 16 };
+  game.start(0, configCustom, [0, 2, 7]);
+  assert.deepEqual([game.snapshot(0).mode, game.snapshot(0).totalNotes], ['custom', 3]);
+  const start = GEOMETRY.leadInMs;
+  game.tick(start);
+  assert.deepEqual(game.snapshot(start).notes.map((note) => note.spawnAt), [start]);
+  game.tick(start + 1000);
+  assert.deepEqual(game.snapshot(start + 1000).notes.map((note) => note.spawnAt), [start, start + 1000]);
+  game.tick(start + 3500);
+  assert.equal(game.snapshot(start + 3500).notes.at(-1)?.spawnAt, start + 3500);
+  assert.equal(game.snapshot(start + 3500).hasNextNote, false);
+});
+
+test('custom chart finishes after its final circle, with no endlessly repeating notes', () => {
+  const game = new RhythmEngine();
+  game.start(0, config, [0, 4]);
+  const lastSpawn = GEOMETRY.leadInMs + 2000;
+  game.tick(lastSpawn + config.durationMs + 241);
+  const result = game.snapshot(lastSpawn + config.durationMs + 5000);
+  assert.equal(result.phase, 'finished');
+  assert.equal(result.totalNotes, 2);
+  assert.equal(result.bad, 2);
+  assert.equal(result.good, 0);
+  assert.equal(result.score, 0);
+  assert.equal(result.elapsed, lastSpawn + config.durationMs + 240);
+  game.tick(lastSpawn + 99999);
+  assert.equal(game.snapshot(lastSpawn + 99999).bad, 2);
+  game.start(lastSpawn + 100000, config, [1]);
+  assert.equal(game.snapshot(lastSpawn + 100000).phase, 'playing');
+  assert.equal(game.snapshot(lastSpawn + 100000).totalNotes, 1);
+  assert.equal(game.snapshot(lastSpawn + 100000).bad, 0);
+});
+
+test('custom chart supports quarter beat timings and pause/resume', () => {
+  const game = new RhythmEngine();
+  game.start(0, config, [0.25, 1.75]);
+  game.tick(GEOMETRY.leadInMs + 125);
+  assert.equal(game.snapshot(550).notes[0].spawnAt, GEOMETRY.leadInMs + 125);
+  game.pause(600);
+  assert.equal(game.snapshot(99999).elapsed, 600);
+  game.resume(2000);
+  game.tick(2000 + 745);
+  assert.equal(game.snapshot(2745).notes[1].spawnAt, GEOMETRY.leadInMs + 875);
+});
+
+test('custom chart GOOD judgement matches existing endless rules', () => {
+  const game = new RhythmEngine();
+  game.start(0, config, [2]);
+  const check = judgeWindow(GEOMETRY.leadInMs + 1000, config);
+  game.press(check.start + 5);
+  game.release(check.end - 5);
+  assert.deepEqual([game.snapshot(check.end).score, game.snapshot(check.end).good], [1, 1]);
+});

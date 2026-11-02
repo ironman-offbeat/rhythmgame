@@ -1,4 +1,4 @@
-export type Phase = 'ready' | 'playing' | 'paused';
+export type Phase = 'ready' | 'playing' | 'paused' | 'finished';
 export type NoteStatus = 'pending' | 'holding' | 'good' | 'bad';
 export type JudgeKind = 'GOOD' | 'BAD';
 export type FailReason = 'EARLY' | 'MISSED' | 'HELD_TOO_LONG';
@@ -31,6 +31,9 @@ export interface GameSnapshot {
   elapsed: number;
   notes: readonly RhythmNote[];
   nextNoteIn: number;
+  hasNextNote: boolean;
+  mode: 'endless' | 'custom';
+  totalNotes: number | null;
   score: number;
   good: number;
   bad: number;
@@ -40,7 +43,6 @@ export interface GameSnapshot {
   holding: boolean;
 }
 
-// Keep the existing quarter-beat option while allowing every whole-beat spacing.
 export const BEAT_INTERVAL_OPTIONS = [
   ...Array.from({ length: 16 }, (_, index) => ({
     value: index + 1,
@@ -87,7 +89,10 @@ export class RhythmEngine {
   private startedAt = 0;
   private pausedAt = 0;
   private pausedTotal = 0;
-  private nextSpawnAt = GEOMETRY.leadInMs;
+  private nextSpawnAt: number = GEOMETRY.leadInMs;
+  private customSpawns: number[] | null = null;
+  private customIndex = 0;
+  private completedElapsed = 0;
   private nextNoteId = 1;
   private nextEventId = 1;
   private notes: RhythmNote[] = [];
@@ -104,9 +109,14 @@ export class RhythmEngine {
     return this.phase;
   }
 
-  start(now: number, config: GameConfig = DEFAULT_CONFIG): void {
+  start(now: number, config: GameConfig = DEFAULT_CONFIG, customBeats?: readonly number[]): void {
     this.reset();
     this.config = { ...config };
+    if (customBeats !== undefined) {
+      const uniqueBeats = [...new Set(customBeats.filter((beat) => Number.isFinite(beat) && beat >= 0))].sort((a, b) => a - b);
+      this.customSpawns = uniqueBeats.map((beat) => GEOMETRY.leadInMs + (60_000 / config.bpm) * beat);
+      this.nextSpawnAt = this.customSpawns[0] ?? Infinity;
+    }
     this.startedAt = now;
     this.phase = 'playing';
   }
@@ -117,6 +127,9 @@ export class RhythmEngine {
     this.pausedAt = 0;
     this.pausedTotal = 0;
     this.nextSpawnAt = GEOMETRY.leadInMs;
+    this.customSpawns = null;
+    this.customIndex = 0;
+    this.completedElapsed = 0;
     this.nextNoteId = 1;
     this.nextEventId = 1;
     this.notes = [];
@@ -133,6 +146,7 @@ export class RhythmEngine {
   pause(now: number): void {
     if (this.phase !== 'playing') return;
     this.tick(now);
+    if (this.phase !== 'playing') return;
     this.pausedAt = now;
     this.phase = 'paused';
     // A held input must not carry through a pause.
@@ -154,6 +168,7 @@ export class RhythmEngine {
 
   getElapsed(now: number): number {
     if (this.phase === 'ready') return 0;
+    if (this.phase === 'finished') return this.completedElapsed;
     const time = this.phase === 'paused' ? this.pausedAt : now;
     return Math.max(0, time - this.startedAt - this.pausedTotal);
   }
@@ -178,16 +193,24 @@ export class RhythmEngine {
   tick(now: number): void {
     if (this.phase !== 'playing') return;
     const elapsed = this.getElapsed(now);
-    const spacing = noteIntervalMs(this.config);
-    // A guard prevents runaway catch-up work after a severely suspended tab.
-    let spawned = 0;
-    while (elapsed >= this.nextSpawnAt && spawned < 256) {
-      this.notes.push({ id: this.nextNoteId++, spawnAt: this.nextSpawnAt, status: 'pending' });
-      this.nextSpawnAt += spacing;
-      spawned += 1;
-    }
-    if (spawned === 256 && elapsed >= this.nextSpawnAt) {
-      this.nextSpawnAt += Math.ceil((elapsed - this.nextSpawnAt) / spacing + 1) * spacing;
+    // Custom charts use an absolute beat timeline. Endless mode retains its old periodic scheduler.
+    if (this.customSpawns) {
+      while (this.customIndex < this.customSpawns.length && elapsed >= this.nextSpawnAt) {
+        this.notes.push({ id: this.nextNoteId++, spawnAt: this.nextSpawnAt, status: 'pending' });
+        this.customIndex += 1;
+        this.nextSpawnAt = this.customSpawns[this.customIndex] ?? Infinity;
+      }
+    } else {
+      const spacing = noteIntervalMs(this.config);
+      let spawned = 0;
+      while (elapsed >= this.nextSpawnAt && spawned < 256) {
+        this.notes.push({ id: this.nextNoteId++, spawnAt: this.nextSpawnAt, status: 'pending' });
+        this.nextSpawnAt += spacing;
+        spawned += 1;
+      }
+      if (spawned === 256 && elapsed >= this.nextSpawnAt) {
+        this.nextSpawnAt += Math.ceil((elapsed - this.nextSpawnAt) / spacing + 1) * spacing;
+      }
     }
     for (const note of this.notes) {
       if (note.status !== 'pending' && note.status !== 'holding') continue;
@@ -197,11 +220,22 @@ export class RhythmEngine {
       }
     }
     this.notes = this.notes.filter((note) => elapsed <= note.spawnAt + this.config.durationMs + 140);
+    if (this.customSpawns && this.customIndex >= this.customSpawns.length) {
+      const lastSpawn = this.customSpawns.at(-1) ?? GEOMETRY.leadInMs;
+      const endAt = lastSpawn + this.config.durationMs + 240;
+      if (elapsed >= endAt) {
+        this.completedElapsed = endAt;
+        this.phase = 'finished';
+        this.physicalDown = false;
+        this.heldNoteId = null;
+      }
+    }
   }
 
   press(now: number): void {
     if (this.phase !== 'playing' || this.physicalDown) return;
     this.tick(now);
+    if (this.phase !== 'playing') return;
     this.physicalDown = true;
     const elapsed = this.getElapsed(now);
     const available = this.notes
@@ -231,6 +265,10 @@ export class RhythmEngine {
       return;
     }
     this.tick(now);
+    if (this.phase !== 'playing') {
+      this.heldNoteId = null;
+      return;
+    }
     const elapsed = this.getElapsed(now);
     const held = this.notes.find((note) => note.id === this.heldNoteId);
     this.heldNoteId = null;
@@ -255,7 +293,10 @@ export class RhythmEngine {
       phase: this.phase,
       elapsed,
       notes: this.notes,
-      nextNoteIn: Math.max(0, this.nextSpawnAt - elapsed),
+      nextNoteIn: Number.isFinite(this.nextSpawnAt) ? Math.max(0, this.nextSpawnAt - elapsed) : 0,
+      hasNextNote: Number.isFinite(this.nextSpawnAt),
+      mode: this.customSpawns === null ? 'endless' : 'custom',
+      totalNotes: this.customSpawns?.length ?? null,
       score: this.score,
       good: this.good,
       bad: this.bad,
