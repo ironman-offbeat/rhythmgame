@@ -1,19 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
+  BEAT_INTERVAL_OPTIONS,
   DEFAULT_CONFIG,
   RhythmEngine,
+  noteIntervalMs,
   type GameConfig,
   type GameSnapshot,
   type JudgeEvent,
 } from './game/engine';
 import { drawGame } from './game/render';
-
-const SPACINGS = [
-  { value: 16, label: '16박자 (기본)' },
-  { value: 4, label: '4박자' },
-  { value: 1, label: '1박자' },
-  { value: 0.25, label: '16분음표' },
-];
 
 const fmt = (value: number) => value.toLocaleString('ko-KR');
 
@@ -158,7 +153,7 @@ function App() {
         <section className="play-area" aria-label="리듬게임 플레이 영역">
           <div className="stage-header">
             <span><i className="tiny-dot" /> CONTROL SURFACE</span>
-            <span>{settings.bpm} BPM <b>·</b> {SPACINGS.find((s) => s.value === settings.beatsPerNote)?.label}</span>
+            <span>{settings.bpm} BPM <b>·</b> {BEAT_INTERVAL_OPTIONS.find((s) => s.value === settings.beatsPerNote)?.label}</span>
           </div>
           <div className={`stage ${isRunning ? 'stage-live' : ''}`} onPointerDown={stageDown}>
             <canvas ref={canvas} aria-hidden="true" />
@@ -200,11 +195,11 @@ function App() {
           <div className="settings-head"><div><strong>PLAY SETTINGS</strong><p>게임 시작 전에 변경할 수 있습니다.</p></div><button onClick={() => setShowSettings(false)} aria-label="설정 닫기">×</button></div>
           <div className="setting-grid">
             <label>BPM <strong>{settings.bpm}</strong><input type="range" min="60" max="180" step="5" value={settings.bpm} onChange={(event) => updateSetting('bpm', Number(event.target.value))}/></label>
-            <label>원 생성 간격<select value={settings.beatsPerNote} onChange={(event) => updateSetting('beatsPerNote', Number(event.target.value))}>{SPACINGS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
+            <label>원 생성 간격 (1~16박)<select value={settings.beatsPerNote} onChange={(event) => updateSetting('beatsPerNote', Number(event.target.value))}>{BEAT_INTERVAL_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}</select></label>
             <label>축소 시간 <strong>{(settings.durationMs / 1000).toFixed(1)}초</strong><input type="range" min="1200" max="2200" step="100" value={settings.durationMs} onChange={(event) => updateSetting('durationMs', Number(event.target.value))}/></label>
             <label>판정 띠 두께 <strong>{settings.bandWidth}px</strong><input type="range" min="20" max="36" step="2" value={settings.bandWidth} onChange={(event) => updateSetting('bandWidth', Number(event.target.value))}/></label>
           </div>
-          <p className="settings-footnote">기본값의 16박자는 120 BPM에서 8초마다 원이 생성되는 방식입니다. 더 빠른 테스트는 4박자 또는 1박자를 선택하세요.</p>
+          <p className="settings-footnote">현재 설정: {settings.bpm} BPM · {BEAT_INTERVAL_OPTIONS.find((s) => s.value === settings.beatsPerNote)?.label} · {Number((noteIntervalMs(settings) / 1000).toFixed(2))}초마다 원 생성. 1~16박을 모두 선택할 수 있으며, 기존 16분음표 옵션도 유지됩니다.</p>
         </section>
       )}
       <div className="sr-only" aria-live="polite">{announcement}</div>

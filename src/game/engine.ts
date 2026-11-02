@@ -40,6 +40,15 @@ export interface GameSnapshot {
   holding: boolean;
 }
 
+// Keep the existing quarter-beat option while allowing every whole-beat spacing.
+export const BEAT_INTERVAL_OPTIONS = [
+  ...Array.from({ length: 16 }, (_, index) => ({
+    value: index + 1,
+    label: `${index + 1}박자${index === 15 ? ' (기본)' : ''}`,
+  })),
+  { value: 0.25, label: '16분음표 (0.25박)' },
+];
+
 export const DEFAULT_CONFIG: GameConfig = {
   bpm: 120,
   beatsPerNote: 16,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  BEAT_INTERVAL_OPTIONS,
   DEFAULT_CONFIG,
   GEOMETRY,
   RhythmEngine,
@@ -20,6 +21,15 @@ const createGame = () => {
 test('default note spacing is exactly 16 beats', () => {
   assert.equal(noteIntervalMs(config), 8000);
   assert.equal(noteIntervalMs({ ...config, beatsPerNote: 0.25 }), 125);
+});
+
+test('setting provides each whole-beat spacing from 1 through 16', () => {
+  const expected = Array.from({ length: 16 }, (_, index) => index + 1);
+  assert.deepEqual(BEAT_INTERVAL_OPTIONS.slice(0, 16).map((entry) => entry.value), expected);
+  assert.equal(BEAT_INTERVAL_OPTIONS.at(-1)?.value, 0.25);
+  for (const beats of expected) {
+    assert.equal(noteIntervalMs({ ...config, beatsPerNote: beats }), 500 * beats);
+  }
 });
 
 test('note crosses the full judgement band and fades away within one second', () => {
