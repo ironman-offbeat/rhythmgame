@@ -1,67 +1,45 @@
-# Rhythm Game
+# NEON PULSE — Rhythm Game Prototype
 
-모바일과 데스크톱 브라우저에서 실행할 웹 리듬게임 프로젝트입니다.
+카메라·음악 없이 마우스, 터치, 스페이스바로 테스트할 수 있는 웹 리듬게임입니다.
 
-> **현재 단계:** 개발 환경 초기화. 게임 규칙, 판정, 채보, 곡 선택, 사운드 및 실제 플레이 화면은 기획 확정 후 구현합니다.
+## 현재 구현
 
-## 기술 구성
+- 중앙의 고정된 청록색 도넛형 점선 판정 원과 축소되는 네온 보라색 원
+- 등장 시 페이드인 및 판정 원 진입 후 1초 이내 소멸하는 페이드아웃
+- 색상 원 **테두리**가 도넛 띠에 진입한 이후 누르고, 안쪽 경계를 통과하기 전에 떼면 `GOOD`(+1점)
+- 조기 입력, 늦은 해제, 무입력 시 `BAD`(0점)
+- GOOD/BAD 피드백, 점수·콤보·정확도, 시작·일시정지·계속·초기화
+- 모바일 터치·PC 마우스·키보드 Space 지원
+- BPM(60~180), 생성 간격, 축소 시간, 판정 띠 두께 변경
+- 타이밍 기준은 `performance.now()`로 고정되어 프레임 지연과 판정을 분리
+- 자동 판정 테스트 9개
 
-- **Vite 8 + React 19 + TypeScript**: 웹 앱 빌드 및 UI 개발
-- **Web Audio API(예정)**: 음원 재생 및 시간 동기화
-- **Canvas / requestAnimationFrame(예정)**: 게임 노트와 연출을 프레임 단위로 렌더링
-- **Vercel(예정)**: 정적 웹 앱 배포
+## 박자에 관한 임시 결정
 
-리듬 판정 시각은 화면 프레임이 아니라 오디오 타임라인에 기반하도록 설계할 계획입니다. 게임 기획 전까지 판정 방식이나 레인 수 등은 미확정입니다.
+원문의 `16박자`를 그대로 해석하여 **기본값은 16박마다 원 1개 생성**입니다. BPM 120에서 8초마다 등장합니다. 설정에서 4박자, 1박자, 16분음표(1/4박)로 바꿔 즉시 테스트할 수 있습니다. 음악을 나중에 추가할 때 BPM 및 분할 박자 해석을 최종 확정합니다.
 
-## 로컬 실행
+## 실행 및 검증
 
-Node.js 22.12 이상이 필요합니다.
+Node.js 22.12+.
 
 ```bash
 npm install
 npm run dev
-```
-
-개발 서버가 표시하는 로컬 주소에서 확인합니다.
-
-```bash
+npm run test
 npm run typecheck
 npm run build
-npm run preview
 ```
 
-- `npm run typecheck`: TypeScript 검사
-- `npm run build`: `dist/` 정적 배포 파일 생성
-- `npm run preview`: 빌드 결과 미리보기
+## 구조
 
-## 폴더 구성
+- `src/game/engine.ts`: 노트 스케줄링 및 게임 판정 (입력 독립)
+- `src/game/render.ts`: Canvas 기반 원·네온 렌더링
+- `src/App.tsx`: React 게임 UI 및 포인터·키보드 입력
+- `src/styles.css`: 네온 디자인과 반응형 화면
+- `tests/engine.test.mjs`: Node 내장 테스트 러너 기반 판정 회귀 테스트
 
-```text
-public/                   정적 에셋(향후 음악/이미지 등)
-src/
-  game/                  게임 로직 추가 예정
-  App.tsx                앱 진입 화면
-  main.tsx               React 초기화
-  styles.css             전역·반응형 스타일
-.github/workflows/ci.yml 자동 타입 검사 및 빌드
-```
+현재 버전은 로컬 브라우저에서 곧바로 플레이할 수 있습니다. 별도 카메라 권한과 음악 파일은 사용하지 않습니다. 일정한 BPM 기준 타이머만 사용합니다. 실제 음악 및 카메라 입력은 후속 기획에서 개발합니다.
 
-음원 및 이미지 등의 저작권·용량·라이선스를 확인한 후 저장 위치와 전송 전략을 정합니다. 대형 음원은 무조건 GitHub 저장소에 넣지 않습니다.
+## Vercel (아직 배포하지 않음)
 
-## Vercel 배포 (추후)
-
-1. Vercel에서 이 GitHub 저장소를 Import합니다.
-2. **Framework Preset:** Vite
-3. **Build Command:** `npm run build`
-4. **Output Directory:** `dist`
-5. **Node.js:** 22.x 이상(지원되는 버전)
-
-현 시점에는 Vercel 연결·배포를 하지 않았습니다.
-
-## 개발 원칙
-
-1. 초기에는 모바일 브라우저를 우선하며, 데스크톱 반응형으로 확장합니다.
-2. 오디오 시간 동기화와 렌더링 상태 관리를 분리합니다.
-3. 사용자 입력(터치·키보드)의 지연을 측정하고 불필요한 React 재렌더링을 피합니다.
-4. 게임 기획 확정 전에는 게임플레이 규칙을 임의로 추가하지 않습니다.
-5. 기능 단위로 테스트하고 안정적인 상태를 `main`에 반영합니다.
+GitHub 저장소를 Vercel에 Import하고 Framework를 `Vite`, Build command를 `npm run build`, Output을 `dist`로 지정하면 정적 호스팅이 가능합니다.
